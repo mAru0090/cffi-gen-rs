@@ -1,14 +1,20 @@
 use crate::defines::*;
 use proc_macro::TokenStream;
+use quote::ToTokens;
 use quote::{format_ident, quote};
 use syn::{
-    Expr, ExprLit, FnArg, GenericArgument, Ident, Lit, LitStr, Meta, MetaNameValue, Pat,Path, PatType,
-    PathArguments, ReturnType, Signature, Token, Type, TypeArray, TypeImplTrait, TypeParamBound,
-    TypePath, TypeReference, TypeSlice,
+    Attribute, Expr, ExprLit, FnArg, GenericArgument, Ident, Lit, LitStr, Meta, MetaNameValue, Pat,
+    PatType, Path, PathArguments, ReturnType, Signature, Token, Type, TypeArray, TypeImplTrait,
+    TypeParamBound, TypePath, TypeReference, TypeSlice,
     parse::{Parse, ParseStream},
     parse_macro_input, parse_str,
     punctuated::Punctuated,
 };
+
+// =====================================================================
+// アトリビュート用解析用構造体
+// =====================================================================
+pub struct CFFIAttributeAnalyzer;
 
 // =====================================================================
 // メインの解析用構造体
@@ -64,14 +70,90 @@ impl CFFIAnalyzer {
     // =====================================================================
     // 指定引数がOption<Path>かどうかをboolで返す関数
     // =====================================================================
-    pub fn is_path(ty: &Type) -> bool {
+    pub fn is_type_path(ty: &Type) -> bool {
+        if let Type::Path(type_path) = ty {
+            return true;
+        }
         false
     }
- 
+
+    // =====================================================================
+    // 指定引数をOption<TypePath>で返す関数
+    // =====================================================================
+    pub fn extract_type_path(ty: &Type) -> Option<&TypePath> {
+        if let Type::Path(type_path) = ty {
+            return Some(type_path);
+        }
+        None
+    }
+
     // =====================================================================
     // 指定引数をOption<Path>で返す関数
     // =====================================================================
     pub fn extract_path(ty: &Type) -> Option<&Path> {
+        if let Type::Path(type_path) = ty {
+            return Some(&type_path.path);
+        }
+        None
+    }
+
+    // =====================================================================
+    // 指定の識別子名（ident）に一致するアトリビュートの `Path` を取得する
+    // =====================================================================
+    pub fn extract_path_attr(attrs: &[Attribute], ident: &str) -> Option<Path> {
+        for attr in attrs {
+            match &attr.meta {
+                Meta::Path(path)
+                | Meta::List(syn::MetaList { path, .. })
+                | Meta::NameValue(syn::MetaNameValue { path, .. }) => {
+                    if path.is_ident(ident) {
+                        return Some(path.clone());
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    // =====================================================================
+    // 式が `Expr::Path` なら `Path` を返す
+    // =====================================================================
+    pub fn extract_expr_path(expr: &Expr) -> Option<&Path> {
+        if let Expr::Path(expr_path) = expr {
+            Some(&expr_path.path)
+        } else {
+            None
+        }
+    }
+    // =====================================================================
+    // 指定アトリビュートからarg_convertを取得
+    // =====================================================================
+    pub fn extract_arg_convert_attr(attrs: &[syn::Attribute]) -> Option<String> {
+        if let Some(lit_value) = Self::get_name_value_attr(attrs, M_ATTR_ARG_CONVERT) {
+            return Some(lit_value);
+        }
+
+        // #[arg_convert = default] のようなパターンを処理
+        for attr in attrs {
+            if let Meta::NameValue(MetaNameValue { path, value, .. }) = &attr.meta {
+                if path.is_ident(M_ATTR_ARG_CONVERT) {
+                    if let Some(expr_path) = Self::extract_expr_path(value) {
+                        // Pathが識別子で構成されていれば、それを取り出して返す
+                        if let Some(ident) = expr_path.get_ident() {
+                            return Some(ident.to_string());
+                        } else {
+                            return Some(expr_path.to_token_stream().to_string());
+                        }
+                    }
+                }
+            }
+        }
+
+        // #[arg_convert] のようなPath形式
+        if let Some(path) = Self::extract_path_attr(attrs, M_ATTR_ARG_CONVERT) {
+            return Some(path.to_token_stream().to_string());
+        }
+
         None
     }
 
@@ -99,7 +181,7 @@ impl CFFIAnalyzer {
     }
 
     // =====================================================================
-    // 指定アトリビュートの値をStringで取得する関数
+    // 指定アトリビュートの値が存在する場合の値をStringで取得する関数
     // =====================================================================
     pub fn get_name_value_attr(attrs: &[syn::Attribute], ident: &str) -> Option<String> {
         for attr in attrs {
@@ -116,6 +198,24 @@ impl CFFIAnalyzer {
             }
         }
         None
+    }
+
+    // =====================================================================
+    // 指定された属性識別子 List 型属性から `Vec<String>` を取得する。
+    // =====================================================================
+    pub fn get_list_strings_attr(attrs: &[Attribute], ident: &str) -> Vec<String> {
+        let mut result = Vec::new();
+
+        for attr in attrs {
+            let _ = attr.parse_nested_meta(|meta| {
+                if meta.path.is_ident(ident) {
+                    result.push(meta.path.to_token_stream().to_string());
+                }
+                Ok(())
+            });
+        }
+
+        result
     }
 
     // =====================================================================
@@ -412,9 +512,11 @@ impl CFFIAnalyzer {
         }
     }
 
-    pub fn extract_default_expr(attrs: &[syn::Attribute]) -> Option<proc_macro2::TokenStream> {
+    pub fn extract_option_default_expr_attr(
+        attrs: &[syn::Attribute],
+    ) -> Option<proc_macro2::TokenStream> {
         for attr in attrs {
-            if attr.path().is_ident("default") {
+            if attr.path().is_ident(M_ATTR_OPTION_DEFAULT) {
                 if let Meta::NameValue(MetaNameValue { value, .. }) = &attr.meta {
                     if let Expr::Lit(ExprLit {
                         lit: Lit::Str(lit_str),

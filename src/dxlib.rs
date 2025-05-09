@@ -28,7 +28,7 @@ pub enum DxLibError {
 cffi_gen! {
     config{
         #[library_name = "DxLib_x64"], // ライブラリ名
-        //#[link_type = "dylib"], // リンクタイプ
+        #[link_type = "dylib"], // リンクタイプ
         #[as_result], // 関数戻り値をanyhow::Resultに変換
         #[arg_convert = default], // 関数引数の変換処理をデフォルトにする
         #[func_name_top_prefix = "dx_" ], // ffi関数生成関数の最初にdx_をつけて生成
@@ -42,5 +42,6 @@ cffi_gen! {
         fn DxLib_End() -> i32,
         fn ChangeWindowMode(mode: i32) -> i32,
         fn TestFunc(p: impl AsRef<str>) -> i32,
+        fn TestFunc2(#[option_default = "0"]p: Option<i32>) -> i32,
     }
 }

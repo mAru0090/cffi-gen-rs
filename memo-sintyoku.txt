@@ -2,13 +2,18 @@
 	現時点で実装しているもの
 	== 主要 == 
 	・cffi_genで、config、functionsのセクション分け
-	・全体的なモジュール分離(可読性上げのため)
+	・簡単なモジュール分離(可読性上げのため)
 	・全体的な構想構築(
 		cffi_gen構築後 - > cffi,cffi_module構築
 		- > cffi_genで行うコード生成の処理に前述アトリビュートを使用
 	)
-	== アトリビュート ==
-	・#[library_name = value]
-        ・#[link_type = value]
-        ・#[as_result] 
-	・#[func_name_top_prefix = value ]
+	== 対応アトリビュート ==
+	! ただし、値の形式は文字列だけ対応、式だけ対応とバラバラなため、統一すること!
+	・#[library_name = value] : 関数別は現時点不可、configにて適用可能にはなっている
+        ・#[link_type = value] : 関数別は現時点不可、configにて適用可能にはなっている
+        ・#[as_result] : 関数別、configどちらも利用可能になっている
+	・#[func_name_top_prefix = value ] , 
+	  #[func_name_down_prefix = value ] : 関数別、configどちらも利用可能になっている
+	・#[option_default = value] : 関数引数別で利用可能になっている
+2025/05/10
+

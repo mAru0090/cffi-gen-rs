@@ -1,4 +1,5 @@
 // src/lib.rs
+mod cffi_attribute_analyzer;
 mod cffi_analyzer;
 mod cffi_error;
 mod cffi_gen_impl;
