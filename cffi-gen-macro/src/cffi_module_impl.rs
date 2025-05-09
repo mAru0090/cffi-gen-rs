@@ -1,7 +1,6 @@
-
 extern crate proc_macro;
-use anyhow::Result;
 use crate::cffi_analyzer::*;
+use anyhow::Result;
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use std::sync::Mutex;
@@ -18,6 +17,5 @@ use syn::{
 // cffi_moduleアトリビュートでの実装処理をする関数
 // =====================================================================
 pub fn generate_cffi_module(_attr: TokenStream, _item: TokenStream) -> TokenStream {
-    quote!{
-    }.into()
+    quote! {}.into()
 }

@@ -41,5 +41,6 @@ cffi_gen! {
         // ライブラリ使用の終了関数
         fn DxLib_End() -> i32,
         fn ChangeWindowMode(mode: i32) -> i32,
+        fn TestFunc(p: impl AsRef<str>) -> i32,
     }
 }

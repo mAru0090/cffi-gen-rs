@@ -2,26 +2,24 @@
 mod cffi_analyzer;
 mod cffi_error;
 mod cffi_gen_impl;
-mod cffi_module_impl;
 mod cffi_impl;
-mod structs;
+mod cffi_module_impl;
 mod defines;
+mod structs;
 
 use anyhow::Result;
 use cffi_analyzer::*;
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use std::sync::Mutex;
+use structs::*;
 use syn::{
-    Expr, ExprLit, FnArg, GenericArgument, Ident, Lit, LitStr, Meta, MetaNameValue,
-    PathArguments, ReturnType, Signature, Token, TypeParamBound, TypePath, TypeReference,
-    braced,
+    Attribute, Expr, ExprLit, FnArg, GenericArgument, Ident, Lit, LitStr, Meta, MetaNameValue,
+    PathArguments, ReturnType, Signature, Token, TypeParamBound, TypePath, TypeReference, braced,
     parse::{Parse, ParseStream},
     parse_macro_input, parse_str,
     punctuated::Punctuated,
-    Attribute,
 };
-use structs::*;
 
 impl Parse for FunctionWithAttrs {
     fn parse(input: ParseStream) -> syn::Result<Self> {
@@ -30,7 +28,6 @@ impl Parse for FunctionWithAttrs {
         Ok(FunctionWithAttrs { attrs, sig })
     }
 }
-
 
 impl Parse for CFFIGenInput {
     fn parse(input: ParseStream) -> syn::Result<Self> {
@@ -83,9 +80,9 @@ pub fn cffi_gen(input: TokenStream) -> TokenStream {
 
 #[proc_macro_attribute]
 pub fn cffi_module(attr: TokenStream, item: TokenStream) -> TokenStream {
-    cffi_module_impl::generate_cffi_module(attr,item)
+    cffi_module_impl::generate_cffi_module(attr, item)
 }
 #[proc_macro_attribute]
 pub fn cffi(attr: TokenStream, item: TokenStream) -> TokenStream {
-    cffi_impl::generate_cffi(attr,item)
+    cffi_impl::generate_cffi(attr, item)
 }

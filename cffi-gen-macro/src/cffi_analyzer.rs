@@ -2,7 +2,7 @@ use crate::defines::*;
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use syn::{
-    Expr, ExprLit, FnArg, GenericArgument, Ident, Lit, LitStr, Meta, MetaNameValue, Pat, PatType,
+    Expr, ExprLit, FnArg, GenericArgument, Ident, Lit, LitStr, Meta, MetaNameValue, Pat,Path, PatType,
     PathArguments, ReturnType, Signature, Token, Type, TypeArray, TypeImplTrait, TypeParamBound,
     TypePath, TypeReference, TypeSlice,
     parse::{Parse, ParseStream},
@@ -20,25 +20,74 @@ impl CFFIAnalyzer {
     // 指定引数が不変参照型かboolで返す関数
     // =====================================================================
     pub fn is_ref(ty: &Type) -> bool {
-        false
+        if let Type::Reference(TypeReference {
+            elem,
+            mutability: None,
+            ..
+        }) = ty
+        {
+            return true;
+        }
+        return false;
     }
     // =====================================================================
     // 指定引数が可変参照型かboolで返す関数
     // =====================================================================
     pub fn is_mut(ty: &Type) -> bool {
+        if let Type::Reference(TypeReference {
+            elem,
+            mutability: Some(_),
+            ..
+        }) = ty
+        {
+            return true;
+        }
+        return false;
+    }
+
+    // =====================================================================
+    // 指定引数が可変参照型の場合、その型をTypeで返す関数
+    // =====================================================================
+    pub fn extract_mut(ty: &Type) -> Option<&Type> {
+        if let Type::Reference(TypeReference {
+            elem,
+            mutability: Some(_),
+            ..
+        }) = ty
+        {
+            return Some(elem);
+        }
+
+        None
+    }
+
+    // =====================================================================
+    // 指定引数がOption<Path>かどうかをboolで返す関数
+    // =====================================================================
+    pub fn is_path(ty: &Type) -> bool {
         false
+    }
+ 
+    // =====================================================================
+    // 指定引数をOption<Path>で返す関数
+    // =====================================================================
+    pub fn extract_path(ty: &Type) -> Option<&Path> {
+        None
     }
 
     // =====================================================================
     // 指定引数が不変参照型の場合、その型をTypeで返す関数
     // =====================================================================
     pub fn extract_ref(ty: &Type) -> Option<&Type> {
-        None
-    }
-    // =====================================================================
-    // 指定引数が可変参照型の場合、その型をTypeで返す関数
-    // =====================================================================
-    pub fn extract_mut(ty: &Type) -> Option<&Type> {
+        if let Type::Reference(TypeReference {
+            elem,
+            mutability: None,
+            ..
+        }) = ty
+        {
+            return Some(elem);
+        }
+
         None
     }
 

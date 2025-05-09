@@ -1,6 +1,8 @@
 // src/cffi_gen.rs
 
 extern crate proc_macro;
+use crate::cffi_analyzer::*;
+use crate::structs::*;
 use anyhow::Result;
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
@@ -13,15 +15,12 @@ use syn::{
     parse_macro_input, parse_str,
     punctuated::Punctuated,
 };
-use crate::structs::*;
-use crate::cffi_analyzer::*;
-
 
 // =====================================================================
 // cffi_genマクロでの実装処理をする関数
 // =====================================================================
 pub fn generate_cffi_gen(input: TokenStream) -> TokenStream {
-   let CFFIGenInput { config_attrs, fns } = parse_macro_input!(input as CFFIGenInput);
+    let CFFIGenInput { config_attrs, fns } = parse_macro_input!(input as CFFIGenInput);
 
     let lib_name = CFFIAnalyzer::extract_library_name_attr(&config_attrs);
     // CString を使うための import
@@ -116,56 +115,52 @@ pub fn generate_cffi_gen(input: TokenStream) -> TokenStream {
 
                 if CFFIAnalyzer::is_impl_as_ref_type(&ty) {
                     // まず ty 自体が参照型かどうかを判定
-                    if let Type::Reference(ref_type) = &**ty {
-                        if let Some(inner_ty) = CFFIAnalyzer::extract_as_ref_generic(&ref_type.elem)
-                        {
-                            if ref_type.mutability.is_none() {
-                                if let Type::Path(type_path) = inner_ty {
-                                    let ident_str =
-                                        type_path.path.segments.last().unwrap().ident.to_string();
+                    if let Some(ref_type) = CFFIAnalyzer::extract_ref(&**ty) {
+                        if let Some(inner_ty) = CFFIAnalyzer::extract_as_ref_generic(&ref_type) {
+                            if let Type::Path(type_path) = inner_ty {
+                                let ident_str =
+                                    type_path.path.segments.last().unwrap().ident.to_string();
 
-                                    if ident_str == "str" || ident_str == "String" {
-                                        wrapper_args.push(quote! {
-                                            #ident: &impl AsRef<#inner_ty>
-                                        });
+                                if ident_str == "str" || ident_str == "String" {
+                                    wrapper_args.push(quote! {
+                                        #ident: &impl AsRef<#inner_ty>
+                                    });
 
-                                        extern_args.push(quote! {
-                                            #ident: *const ::std::os::raw::c_char
-                                        });
+                                    extern_args.push(quote! {
+                                        #ident: *const ::std::os::raw::c_char
+                                    });
 
-                                        let holder_ident = format_ident!("__{}_holder", ident);
-                                        convert_stmts.push(quote! {
-                                            let #holder_ident = CStringHolder::new(#ident.as_ref());
-                                            let #ident = #holder_ident.as_ptr();
-                                        });
+                                    let holder_ident = format_ident!("__{}_holder", ident);
+                                    convert_stmts.push(quote! {
+                                        let #holder_ident = CStringHolder::new(#ident.as_ref());
+                                        let #ident = #holder_ident.as_ptr();
+                                    });
 
-                                        call_idents.push(quote! { #ident });
-                                        continue;
-                                    }
+                                    call_idents.push(quote! { #ident });
+                                    continue;
                                 }
-                            } else {
-                                if let Type::Path(type_path) = inner_ty {
-                                    let ident_str =
-                                        type_path.path.segments.last().unwrap().ident.to_string();
+                            }
+                            if let Type::Path(type_path) = inner_ty {
+                                let ident_str =
+                                    type_path.path.segments.last().unwrap().ident.to_string();
 
-                                    if ident_str == "str" || ident_str == "String" {
-                                        wrapper_args.push(quote! {
-                                            #ident: &mut impl AsRef<#inner_ty>
-                                        });
+                                if ident_str == "str" || ident_str == "String" {
+                                    wrapper_args.push(quote! {
+                                        #ident: &mut impl AsRef<#inner_ty>
+                                    });
 
-                                        extern_args.push(quote! {
-                                            #ident: *const ::std::os::raw::c_char
-                                        });
+                                    extern_args.push(quote! {
+                                        #ident: *const ::std::os::raw::c_char
+                                    });
 
-                                        let holder_ident = format_ident!("__{}_holder", ident);
-                                        convert_stmts.push(quote! {
-                                            let #holder_ident = CStringHolder::new(#ident.as_ref());
-                                            let #ident = #holder_ident.as_ptr();
-                                        });
+                                    let holder_ident = format_ident!("__{}_holder", ident);
+                                    convert_stmts.push(quote! {
+                                        let #holder_ident = CStringHolder::new(#ident.as_ref());
+                                        let #ident = #holder_ident.as_ptr();
+                                    });
 
-                                        call_idents.push(quote! { #ident });
-                                        continue;
-                                    }
+                                    call_idents.push(quote! { #ident });
+                                    continue;
                                 }
                             }
                         }
@@ -214,54 +209,47 @@ pub fn generate_cffi_gen(input: TokenStream) -> TokenStream {
                     }
                 } else if CFFIAnalyzer::is_impl_as_mut_type(&ty) {
                     // まず `ty` 自体が参照型かどうかを判定する
-                    if let Type::Reference(ref_type) = &**ty {
-                        if ref_type.mutability.is_some() {
-                            if let Some(inner_ty) =
-                                CFFIAnalyzer::extract_as_mut_generic(&ref_type.elem)
-                            {
-                                // &mut impl AsMut<[T]> にマッチ
-                                if let Type::Slice(slice) = inner_ty {
-                                    let elem_ty = &slice.elem;
+                    if let Some(ref_type) = CFFIAnalyzer::extract_ref(&**ty) {
+                        if let Some(inner_ty) = CFFIAnalyzer::extract_as_mut_generic(&ref_type) {
+                            // &mut impl AsMut<[T]> にマッチ
+                            if let Type::Slice(slice) = inner_ty {
+                                let elem_ty = &slice.elem;
 
-                                    wrapper_args.push(quote! {
-                                        #ident: &mut impl AsMut<[#elem_ty]>
-                                    });
+                                wrapper_args.push(quote! {
+                                    #ident: &mut impl AsMut<[#elem_ty]>
+                                });
 
-                                    extern_args.push(quote! {
-                                        #ident: *mut #elem_ty
-                                    });
+                                extern_args.push(quote! {
+                                    #ident: *mut #elem_ty
+                                });
 
-                                    convert_stmts.push(quote! {
-                                        let #ident = #ident.as_mut().as_mut_ptr();
-                                    });
+                                convert_stmts.push(quote! {
+                                    let #ident = #ident.as_mut().as_mut_ptr();
+                                });
 
-                                    call_idents.push(quote! { #ident });
-                                    continue;
-                                }
+                                call_idents.push(quote! { #ident });
+                                continue;
                             }
-                        } else {
-                            if let Some(inner_ty) =
-                                CFFIAnalyzer::extract_as_mut_generic(&ref_type.elem)
-                            {
-                                // &impl AsMut<[T]> にマッチ
-                                if let Type::Slice(slice) = inner_ty {
-                                    let elem_ty = &slice.elem;
+                        }
+                        if let Some(inner_ty) = CFFIAnalyzer::extract_as_mut_generic(&ref_type) {
+                            // &impl AsMut<[T]> にマッチ
+                            if let Type::Slice(slice) = inner_ty {
+                                let elem_ty = &slice.elem;
 
-                                    wrapper_args.push(quote! {
-                                        #ident: &impl AsMut<[#elem_ty]>
-                                    });
+                                wrapper_args.push(quote! {
+                                    #ident: &impl AsMut<[#elem_ty]>
+                                });
 
-                                    extern_args.push(quote! {
-                                        #ident: *mut #elem_ty
-                                    });
+                                extern_args.push(quote! {
+                                    #ident: *mut #elem_ty
+                                });
 
-                                    convert_stmts.push(quote! {
-                                        let #ident = #ident.as_mut().as_mut_ptr();
-                                    });
+                                convert_stmts.push(quote! {
+                                    let #ident = #ident.as_mut().as_mut_ptr();
+                                });
 
-                                    call_idents.push(quote! { #ident });
-                                    continue;
-                                }
+                                call_idents.push(quote! { #ident });
+                                continue;
                             }
                         }
                     }
@@ -425,8 +413,8 @@ pub fn generate_cffi_gen(input: TokenStream) -> TokenStream {
                 }
 
                 // &str の場合は *const c_char に変換
-                if let Type::Reference(TypeReference { elem, .. }) = &**ty {
-                    if let Type::Path(TypePath { path, .. }) = &**elem {
+                if let Some(elem) = CFFIAnalyzer::extract_ref(&ty) {
+                    if let Type::Path(TypePath { path, .. }) = elem {
                         if path.is_ident("str") {
                             wrapper_args.push(quote! { #ident: &str });
                             extern_args.push(quote! { #ident: *const c_char });
@@ -461,8 +449,8 @@ pub fn generate_cffi_gen(input: TokenStream) -> TokenStream {
                 }
 
                 // &String の場合は *const c_char に変換
-                if let Type::Reference(TypeReference { elem, .. }) = &**ty {
-                    if let Type::Path(TypePath { path, .. }) = &**elem {
+                if let Some(elem) = CFFIAnalyzer::extract_ref(&ty) {
+                    if let Type::Path(TypePath { path, .. }) = elem {
                         if path.is_ident("String") {
                             wrapper_args.push(quote! { #ident: &String });
                             extern_args.push(quote! { #ident: *const c_char });
@@ -478,12 +466,10 @@ pub fn generate_cffi_gen(input: TokenStream) -> TokenStream {
                     }
                 }
                 // &mut String の場合は CString に変換 (可変ポインタ *mut c_char)
-                if let Type::Reference(TypeReference {
-                    elem, mutability, ..
-                }) = &**ty
-                {
-                    if let Type::Path(TypePath { path, .. }) = &**elem {
-                        if path.is_ident("String") && mutability.is_some() {
+
+                if let Some(elem) = CFFIAnalyzer::extract_mut(&ty) {
+                    if let Type::Path(TypePath { path, .. }) = elem {
+                        if path.is_ident("String"){
                             // &mut String の場合
                             wrapper_args.push(quote! { #ident: &mut String });
                             extern_args.push(quote! { #ident: *mut c_char });
@@ -505,13 +491,6 @@ pub fn generate_cffi_gen(input: TokenStream) -> TokenStream {
                 call_idents.push(quote! { #ident });
             }
         }
-
-        // let lib_name = CFFI_LIB_NAME;
-
-        //let msg = syn::LitStr::new(&format!("{:?}", lib_name), proc_macro2::Span::call_site());
-        //output.extend(quote! {
-        //compile_error!(#msg);
-        //});
 
         let extern_block = if !link_type.is_empty() {
             quote! {
