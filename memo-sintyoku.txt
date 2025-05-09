@@ -1,8 +1,12 @@
 2025/05/09
 	現時点で実装しているもの
 	== 主要 == 
-	・config、functionsのセクション分け
-	
+	・cffi_genで、config、functionsのセクション分け
+	・全体的なモジュール分離(可読性上げのため)
+	・全体的な構想構築(
+		cffi_gen構築後 - > cffi,cffi_module構築
+		- > cffi_genで行うコード生成の処理に前述アトリビュートを使用
+	)
 	== アトリビュート ==
 	・#[library_name = value]
         ・#[link_type = value]
