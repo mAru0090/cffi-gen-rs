@@ -10,6 +10,7 @@ mod tests {
 
     #[test]
     fn test_dxlib_1() -> R<(), DxLibError> {
+        ChangeWindowMode(1)?;
         DxLib_Init()?;
         DxLib_End()?;
         Ok(())

@@ -28,7 +28,4 @@ pub const M_ATTR_OPTION_DEFAULT: &str = "option_default";
 // =====================================================================
 // 汎用属性 (マクロ全体、関数宣言上部、引数のいずれかで使用可能)
 // =====================================================================
-pub const M_ATTR_ARG_CONVERT_STR: &str = "arg_convert_str";
-pub const M_ATTR_ARG_CONVERT_STRING: &str = "arg_convert_string";
-pub const M_ATTR_ARG_CONVERT_VEC_C_CHAR: &str = "arg_convert_vec_c_char";
-pub const M_ATTR_ARG_CONVERT_AS_REF_STR: &str = "arg_convert_as_ref_str";
+
