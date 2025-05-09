@@ -1,0 +1,10 @@
+2025/05/09
+	現時点で実装しているもの
+	== 主要 == 
+	・config、functionsのセクション分け
+	
+	== アトリビュート ==
+	・#[library_name = value]
+        ・#[link_type = value]
+        ・#[as_result] 
+	・#[func_name_top_prefix = value ]

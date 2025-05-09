@@ -1,0 +1,17 @@
+[package]
+name = "cffi-gen"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.98"
+cffi-gen-macro = {path = "./cffi-gen-macro"}
+lazy_static = "1.5.0"
+syn = { version = "2.0.101", features = ["full"] }
+thiserror = "2.0.12"
+
+
+[workspace]
+members = [
+    "cffi-gen-macro"
+]

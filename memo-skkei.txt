@@ -1,0 +1,209 @@
+== 基本設計等 ==
+・dxlib_genと別で、汎用的なcffi_genを作成
+	- dxlib_rsのutils内の解析関係は全てCFFIAnalayzer::* のグローバルな静的関数にするなど(&self,&mutはなし) 
+	enum RawPointer<T> {
+    		Mutable(*mut T),
+    		Constant(*const T),
+	}
+	// ポインター型の変換用トレイト
+	trait ToRawPointer<T>: Sized {
+    		fn to_raw_pointer(self) -> RawPointer<T>;
+	}
+	- 自作の引数変換処理には、トレイト実装をすることで処理する
+	つまり、実装したい型ごとにToRawPointer<T>:Sizedを実装すれば、
+	自動的にそれらが使用される。
+・基本的にアトリビュートはconfigブロック、
+functionsブロック内の関数宣言前、関数引数前で使用可能だが、
+configブロックで宣言後、functions内で同じアトリビュートを使用した場合、
+上書きされる。
+
+== 基本仕様 == 
+・cffi_gen!は、Cライブラリ等のラップ関数を自動的に生成するマクロ
+・主にstd,その他ユーティリティ、anyhowとthiserrorに依存
+・基本的に何もしない場合は、全て関数名通りのunsafe externが作成され、
+それらをそのまま呼び出せる形になる。
+つまり、
+	cffi_gen! {
+		config {
+			#[library_name = "DxLib_x64"]
+		}
+		functions {
+ 			fn dx_DxLib_Init() -> i32,
+		}
+	}
+等をした場合は、そのままdx_DxLib_Initが作成され、指定のライブラリ名.libと.dllを参照して実行することとなる
+・もしrust風のラップを行いたい場合は、
+	cffi_gen! {
+		config {
+			#[library_name = "DxLib_x64"]
+			#[as_result] 
+			#[arg_convert = default] 
+		}
+		functions {
+  			fn dx_DxLib_Init() -> i32,
+		}
+	}
+等のようにすることで、内部的には、fn dx_DxLib_Init() -> anyhow::Result<i32,FFI_GeneralError>が生成される。また、エラー型を指定したい場合は、マクロトップレベルで、
+	#[as_result_error_type("CustomError")]
+を指定する、もしくは関数の前にこれを指定する。
+
+・マクロの基本的な仕様
+	- #[library_name = value] : config{}内でのみ使用可能
+		・ライブラリ名の指定
+	- #[func_name = value] : 関数宣言上部でのみ使用可能
+		・リンク時に使用する関数名を指定した名前にして、生成
+	- #[func_alias = value] : 関数宣言上部でのみ使用可能
+		・実際に使用可能になる関数が指定の名前で生成される(ffiでの名前は、関数宣言自体で指定した名前、もしくは#[func_name(value)]で指定された名前が使用される
+		そのため、
+			#[func_alias = "dxlib_init"]
+  			fn dx_DxLib_Init() -> i32,
+		等をした場合、ffi用の
+			fn dx_DxLib_Init() -> i32;
+		が生成され、使用者向けの
+			fn dxlib_init() -> i32 {
+				// 具体的なコード
+				dx_DxLib_Init()
+			}
+		が生成される。
+		尚、#[func_name = value]が併用され場合、
+			#[func_name = "dx_DxLib_Init2"]
+			#[func_alias = "dxlib_init"]
+  			fn dx_DxLib_Init2() -> i32,
+		等をした場合、
+			ffi用のdx_DxLib_Init2() -> i32;
+			が生成され、
+			使用者向けのdxlib_init() -> i32 {
+				// 具体的なコード
+				dx_DxLib_Init2()
+			}
+		が生成される。
+		)
+	- #[as_result_error_type = value] : config{}内、関数宣言上部でのみ使用可能
+		・#[as_result]を使用された場合にのみ使える
+		・指定されたエラー型を使用する
+		・thiserror::Errorトレイトを必須とする(enum必須)
+	- #[as_result_error_type_top_priority = value] : config{}内、関数宣言上部でのみ使用可能
+		・指定されたenum値を使用してエラー時に戻り値を返すようにする
+		・エラー条件は、#[error_condition=value]で指定したもの、もしくはデフォルトのエラー条件を使用する。	
+	- #[as_result_error_type_top_priority = default] : config{}内、関数宣言上部でのみ使用可能
+		・デフォルトのエラーのバリアントを使用してエラー時に戻り値を返すようにする
+		・エラー条件は、#[error_condition=value]で指定したもの、もしくはデフォルトのエラー条件を使用する。
+	
+	- #[link_type = value] : config{}内でのみ使用可能
+		・ライブラリのリンクタイプを指定する
+	- #[as_result],#[as_result = default] : config{}内、関数宣言上部でのみ使用可能
+		・デフォルトの戻り値の型を使用(anyhow::Result)
+	- #[as_result = false] : config{}内、関数宣言上部でのみ使用可能
+		・デフォルトの戻り値の型を使用しない
+		・純粋に指定された戻り値でffi,ラップの関数を生成する
+		・このアトリビュート自体が指定されていない場合と同義
+
+	- #[arg_convert = default] : config{}内、関数宣言上部でのみ使用可能
+		・デフォルトの引数変換処理を使用
+		- 具体的なポインタ等、デフォルトの変換処理(
+			c_charはstd::os::rawのもので、
+			エンコードは基本的にUTF8基準だが、
+			その他対応は考える必要あり
+		)
+
+			・&str -> *const
+			・String -> *const
+			・&String -> *const 
+			・&mut String -> *mut c_char
+			・Vec<T> -> *const T
+			・&Vec<T> -> *const T
+			・&mut Vec<T> -> *mut T
+			・&[T] -> *const T
+			・&mut [T] -> *mut T
+			・impl AsRef<str> -> *const c_char
+			・&impl AsRef<str> -> *const c_char
+			・&mut AsMut<str> -> *mut c_char
+			・impl ToString -> *const c_char
+			・&impl ToString -> *const c_char
+			・&mut impl ToString -> *mut c_char
+			・[T;N] -> *const T
+			・&[T;N] -> *const T
+			・&mut [T;N] -> *mut T
+			・構造体型 -> #[repr(c)]をされている構造体のみ そのまま渡す
+			・&構造体型 -> #[repr(c)]をされている構造体のみ &構造体型 as *const 構造体型にして渡す
+			・&mut 構造体型 -> #[repr(c)]をされている構造体のみ &mut 構造体型 as *mut 構造体型にして渡す
+			・Option<T> -> T
+			・プリミティブ型 -> 基本的にそのまま
+
+	- #[arg_convert = false] : config{}内、関数宣言上部でのみ使用可能
+		・デフォルトの引数変換処理を使用しない	
+	- #[as_arg_type = value] : 関数宣言内引数前でのみ使用可能
+		・引数の型を指定型に変換する(暗黙的な変換(as,Into)、Intoが使用できない場合、asが使用される。その場合、負数、少数の値こぼれ等は考慮されない)	
+	- #[as_arg_type = value] : 関数宣言内引数前でのみ使用可能
+		・引数の型を指定型に変換する(暗黙的な変換(as,Into)、Intoが使用できない場合、asが使用される。その場合、負数、少数の値こぼれ、切り捨て等は考慮されない)	
+	- #[option_default = default] : 関数宣言内引数前でのみ使用可能
+		・Option型が使用された際、Noneの場合にデフォルトの値が指定される
+	- #[option_default = value] : 関数宣言内引数前でのみ使用可能
+		・Option型が使用された際、Noneの場合に引数の値が指定される
+	- #[error_condition = value] : config{}内、関数宣言上部でのみ使用可能
+		・指定された条件をエラー条件として生成する
+		・resultという名前で比較可能 #[error_condition("result == i32::MAX")]等
+	- #[error_condition = default] : config{}内、関数宣言上部でのみ使用可能
+		・デフォルトの条件をエラー条件として生成する
+	- #[not_null_assert = false] : config{}内、関数宣言上部でのみ使用可能
+		・引数が自動的に*mut,*const等に変換されたものの場合に実行されるnullチェック用assertを無効にする
+	- #[not_null_assert = true] : config{}内、関数宣言上部でのみ使用可能
+		・引数が自動的に*mut,*const等に変換されたものの場合に実行されるnullチェック用assertを有効にする
+		・デフォルトで採択されるため、このマクロはfalseしない限り採択される
+	- #[func_name_top_prefix = value] : config{}内、関数宣言上部でのみ使用可能
+		・指定の文字列を、指定された関数宣言の名前の最初につける
+			- 具体的に処理されること
+				cffi_gen!の中で、
+					fn DxLib_Init() -> i32
+				が指定されているとき、
+					#[func_name_top_prefix="dx_"]
+				を場合、リンクされる関数は、
+					fn dx_DxLib_Init() -> i32
+				として生成される
+	- #[func_name_down_prefix = value] : config{}内、関数宣言上部でのみ使用可能
+		・指定の文字列を、指定された関数宣言の名前の最後につける
+			- 具体的に処理されること
+				cffi_gen!の中で、
+					fn DxLib_Init() -> i32
+				が指定されているとき、
+					#[func_name_top_prefix="_dx"]
+				を場合、リンクされる関数は、
+					fn DxLib_Init_dx() -> i32
+				として生成される
+
+
+例1
+static mut DEFAULT_RECT: RECT = RECT { left: -1, right: -1, top: -1, bottom: -1, }; fn default_rect_ptr() -> *mut RECT { unsafe { &raw mut DEFAULT_RECT } }
+
+cffi_gen! {
+ config{
+	#[library_name = "DxLib_x64"]
+ }
+ functions{
+ 	#[as_result] #[arg_convert = default] fn DxLib_Init() -> i32,
+ 	#[as_result] #[arg_convert = default] fn DxLib_End() -> i32,
+ 	#[as_result] #[arg_convert = default] fn ProcessMessage() -> i32,
+ 	#[as_result] #[arg_convert = default] fn ScreenFlip() -> i32,
+ 	#[as_result] #[arg_convert = default] fn SetDrawScreen(#[option_default = "DX_SCREEN_BACK"] draw_screen: Option<i32>) -> i32,
+ 	#[as_result] #[arg_convert = default] fn ClearDrawScreen(#[option_default = "default_rect_ptr()"] clear_rect: Option<*mut RECT>) -> i32,
+ }
+}
+
+例2
+static mut DEFAULT_RECT: RECT = RECT { left: -1, right: -1, top: -1, bottom: -1, }; fn default_rect_ptr() -> *mut RECT { unsafe { &raw mut DEFAULT_RECT } }
+
+cffi_gen! {
+  config{
+  	#[library_name = "DxLib_x64"]
+	#[as_result] 
+	#[arg_convert = default] 
+  }
+  functions{
+  	fn DxLib_Init() -> i32,
+  	fn DxLib_End() -> i32,
+  	fn ProcessMessage() -> i32,
+ 	fn ScreenFlip() -> i32,
+  	fn SetDrawScreen(#[option_default = "DX_SCREEN_BACK"] draw_screen: Option<i32>) -> i32,
+  	fn ClearDrawScreen(#[option_default = "default_rect_ptr()"] clear_rect: Option<*mut RECT>) -> i32,
+  }
+}
