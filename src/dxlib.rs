@@ -40,7 +40,12 @@ cffi_gen! {
         fn DxLib_Init() -> i32,
         // ライブラリ使用の終了関数
         fn DxLib_End() -> i32,
+        #[error_condition = "result == i32::MAX"]
+        fn WaitKey() -> i32,
+        #[error_condition = "result == i32::MAX"]
+        fn GetColor(red:i32,green:i32,blue:i32)->i32,
         fn ChangeWindowMode(mode: i32) -> i32,
+        fn DrawString(x:i32,y:i32,string:String,color:i32) -> i32,
         fn TestFunc(p: impl AsRef<str>) -> i32,
         fn TestFunc2(#[option_default = "0"]p: Option<i32>) -> i32,
     }

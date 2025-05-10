@@ -53,13 +53,13 @@ pub fn generate_cffi_gen(input: TokenStream) -> TokenStream {
             .map(|alias| format_ident!("{}", alias))
             .unwrap_or_else(|| sig.ident.clone());
 
- 
         // 関数単位で指定がある場合、arg_convertの値を上書き
-        let fn_arg_convert = if let Some(fn_arg_convert) =  CFFIAnalyzer::extract_arg_convert_attr(attrs) {
-            fn_arg_convert.clone()
-        } else {
-            arg_convert.clone()
-        };
+        let fn_arg_convert =
+            if let Some(fn_arg_convert) = CFFIAnalyzer::extract_arg_convert_attr(attrs) {
+                fn_arg_convert.clone()
+            } else {
+                arg_convert.clone()
+            };
 
         // 関数単位で指定がある場合、as_resultの値を上書き
         let is_fn_as_result = if CFFIAnalyzer::is_as_result_attr(attrs) {
@@ -440,18 +440,65 @@ pub fn generate_cffi_gen(input: TokenStream) -> TokenStream {
                         }
                     }
 
-                    // String の場合は *const c_char に変換
                     if let Some(path) = CFFIAnalyzer::extract_path(&ty) {
                         if path.is_ident("String") {
                             wrapper_args.push(quote! { #ident: String });
                             extern_args.push(quote! { #ident: *const c_char });
 
-                            let holder_ident = format_ident!("__{}_holder", ident);
-                            convert_stmts.push(quote! {
-                                let #holder_ident = CStringHolder::new(#ident.to_string());
-                                let #ident = #holder_ident.as_ptr();
-                            });
+                            // 変換結果 (RawPointer) 内のCStringを保持するための識別子
+                            let raw_holder_ident = format_ident!("__{}_holder", ident);
+                            // 変換結果（RawPointer）を保持するための識別子
+                            let raw_ptr_ident = format_ident!("__{}_ptr", ident);
 
+                            /* // 変換ステップ: to_general_type 呼び出しとマッチ*/
+                            /*convert_stmts.push(quote! {*/
+                            /*let #raw_holder_ident = ToGeneralType::to_general_type(#ident);*/
+                            /*let #raw_ptr_ident = match #raw_holder_ident {*/
+                            /*GeneralType::CharPointer(p) => {*/
+                            /*let _keep = owner.as_ref();*/
+                            /*match p {*/
+                            /*RawPointer::Constant{ptr,ref owner, ..}*/
+                            /*=>{*/
+
+                            /*ptr*/
+                            /*}*/
+
+                            /*_ => panic!("Expected Constant pointer"),*/
+                            /*}*/
+                            /*}*/
+                            /*_ => panic!("Expected a valid CharPointer"),*/
+                            /*};*/
+
+                            /*// 取得したポインタをそのまま使用*/
+                            /*let #ident = #raw_ptr_ident;*/
+                            /*});*/
+
+
+convert_stmts.push(quote! {
+    let #raw_holder_ident = ToGeneralType::to_general_type(#ident);
+    let #raw_ptr_ident = match #raw_holder_ident {
+        GeneralType::CharPointer(p) => {
+            match p {
+                RawPointer::Constant { ref ptr, ref owner, .. } => {
+                    // ownerがSomeの場合のみ参照を保持
+                    let _keep = owner.as_ref().map(|boxed_owner| {
+                        // Box内のデータを安全に操作
+                        boxed_owner.as_ref() // 参照を保持
+                    });
+
+                    // ポインタを返す
+                    *ptr
+                }
+                _ => panic!("Expected Constant pointer"),
+            }
+        }
+        _ => panic!("Expected a valid CharPointer"),
+    };
+
+    // 取得したポインタをそのまま使用
+    let #ident = #raw_ptr_ident;
+});
+                          
                             call_idents.push(quote! { #ident });
                             continue;
                         }

@@ -10,8 +10,12 @@ mod tests {
 
     #[test]
     fn test_dxlib_1() -> R<(), DxLibError> {
+        let string = String::from("test! hello world!");
         ChangeWindowMode(1)?;
         DxLib_Init()?;
+        let white_color = GetColor(255, 255, 255)?;
+        DrawString(0, 0, string, white_color)?;
+        WaitKey()?;
         DxLib_End()?;
         Ok(())
     }
