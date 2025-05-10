@@ -473,7 +473,7 @@ pub fn generate_cffi_gen(input: TokenStream) -> TokenStream {
                             /*let #ident = #raw_ptr_ident;*/
                             /*});*/
 
-
+/*
 convert_stmts.push(quote! {
     let #raw_holder_ident = ToGeneralType::to_general_type(#ident);
     let #raw_ptr_ident = match #raw_holder_ident {
@@ -498,7 +498,34 @@ convert_stmts.push(quote! {
     // 取得したポインタをそのまま使用
     let #ident = #raw_ptr_ident;
 });
-                          
+  */
+
+
+convert_stmts.push(quote! {
+    let #raw_holder_ident = ToGeneralType::to_general_type(#ident);
+    let (#raw_ptr_ident, _keep) = match #raw_holder_ident {
+        GeneralType::CharPointer(RawPointer::Constant { ptr, owner, .. }) => {
+            (ptr, owner)
+        }
+        _ => panic!("Expected a valid CharPointer"),
+    };
+    let #ident = #raw_ptr_ident;
+});
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
                             call_idents.push(quote! { #ident });
                             continue;
                         }
