@@ -19,7 +19,7 @@ mod tests {
         let white_color = GetColor(255, 255, 255)?;
         DrawString(0, 0, &string, white_color)?;
         WaitKey()?;
-        string += "あおいえｐ";
+        string += " こんにちは！";
         DrawString(0, 0, &string, white_color)?;
         WaitKey()?;
         DxLib_End()?;
